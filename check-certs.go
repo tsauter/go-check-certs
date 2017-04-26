@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ const (
 	errExpiringShortly = "%s: ** '%s' (S/N %X) expires in %d hours! **"
 	errExpiringSoon    = "%s: '%s' (S/N %X) expires in roughly %d days."
 	errSunsetAlg       = "%s: '%s' (S/N %X) expires after the sunset date for its signature algorithm '%s'."
+	errMissingSAN      = "%s: name %s not found in SAN entries %v"
 )
 
 type sigAlgSunset struct {
@@ -211,6 +213,15 @@ func checkHost(host string) (result hostResult) {
 				}
 			}
 
+			// Check for Subject Alternate Name values
+			hostname, _, err := net.SplitHostPort(host)
+			if err != nil {
+				cErrs = append(cErrs, fmt.Errorf("failed to extract address part: %s", err.Error()))
+			}
+			if (cert.Subject.CommonName == hostname) && (!isValueInList(hostname, cert.DNSNames)) {
+				cErrs = append(cErrs, fmt.Errorf(errMissingSAN, host, hostname, cert.DNSNames))
+			}
+
 			result.certs = append(result.certs, certErrors{
 				commonName: cert.Subject.CommonName,
 				errs:       cErrs,
@@ -219,4 +230,13 @@ func checkHost(host string) (result hostResult) {
 	}
 
 	return
+}
+
+func isValueInList(value string, list []string) bool {
+	for _, v := range list {
+		if v == value {
+			return true
+		}
+	}
+	return false
 }
